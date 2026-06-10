@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "extraer-datos-ine"
+version = "1.0.0"
+description = "SDK oficial de Extraer Datos de INE — API de OCR para credenciales INE/IFE mexicanas (CURP, clave de elector, dirección y más)."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [{ name = "Extraer Datos de INE" }]
+keywords = [
+    "INE",
+    "IFE",
+    "OCR",
+    "CURP",
+    "clave de elector",
+    "credencial para votar",
+    "Mexico",
+    "KYC",
+    "identidad",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://extraerdatosdeine.com"
+Documentation = "https://extraerdatosdeine.com/docs"
+Repository = "https://github.com/rcfrias/ine-extractor-python"
+Issues = "https://github.com/rcfrias/ine-extractor-python/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/extraer_datos_ine"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "examples", "README.md", "LICENSE"]
