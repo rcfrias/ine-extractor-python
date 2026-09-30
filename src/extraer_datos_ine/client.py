@@ -14,6 +14,9 @@ from .types import ExtractResult, ImageSource
 
 DEFAULT_BASE_URL = "https://extraerdatosdeine.com/api/v1"
 DEFAULT_TIMEOUT = 60.0
+# Cloudflare, in front of the API, answers 403 to urllib's default
+# "Python-urllib/3.x" User-Agent, so every request names the SDK instead.
+USER_AGENT = "extraer-datos-ine-python/1.0.1"
 
 # Firma de un "opener" inyectable (para tests): recibe un Request y un timeout
 # y devuelve un objeto con .status / .getcode() y .read(), o lanza HTTPError.
@@ -120,7 +123,7 @@ class IneExtractorClient:
         files: Optional[dict] = None,
     ) -> Any:
         url = self.base_url + path
-        headers = {"X-API-Key": self.api_key}
+        headers = {"X-API-Key": self.api_key, "User-Agent": USER_AGENT}
         data: Optional[bytes] = None
 
         if files is not None:

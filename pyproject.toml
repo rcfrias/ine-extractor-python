@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "extraer-datos-ine"
-version = "1.0.0"
+version = "1.0.1"
 description = "SDK oficial de Extraer Datos de INE — API de OCR para credenciales INE/IFE mexicanas (CURP, clave de elector, dirección y más)."
 readme = "README.md"
 requires-python = ">=3.9"
