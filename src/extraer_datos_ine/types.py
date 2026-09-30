@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TypedDict, Union
+from typing import Optional, TypedDict, Union
 
 
 class IneData(TypedDict, total=False):
@@ -37,6 +37,23 @@ class IneData(TypedDict, total=False):
 
 
 @dataclass(frozen=True)
+class Delivery:
+    """Resultado de la entrega a tu destino (solo si enviaste ``destination_id``).
+
+    Una entrega fallida no deshace la extracción: el token ya se cobró y los
+    datos vienen igual en ``ExtractResult.data``. No hay reintentos.
+    """
+
+    destination_id: str
+    succeeded: bool
+    http_status: Optional[int]
+    """Status HTTP que respondió tu destino (``None`` si no respondió)."""
+    latency_ms: Optional[int]
+    error_code: Optional[str]
+    """Motivo del fallo (``None`` si la entrega tuvo éxito)."""
+
+
+@dataclass(frozen=True)
 class ExtractResult:
     """Resultado de una extracción exitosa."""
 
@@ -48,6 +65,27 @@ class ExtractResult:
     """Tokens restantes en tu cuenta tras esta extracción."""
     upload_method: str
     """Método de upload detectado por la API."""
+    delivery: Optional[Delivery] = None
+    """Resultado de la entrega a tu destino, si enviaste ``destination_id``."""
+
+
+@dataclass(frozen=True)
+class CaptureLink:
+    """Link de captura de un solo uso, creado con ``create_capture_link``.
+
+    ``url`` es una credencial: se devuelve una sola vez, no la guardes en logs.
+    """
+
+    id: str
+    url: str
+    """URL para tu cliente (muéstrala como QR o envíala por mensaje)."""
+    reference: Optional[str]
+    document_type: str
+    """``"ine"`` o ``"passport"``."""
+    require_back: bool
+    ask_guest_persona: bool
+    expires_at: str
+    """ISO 8601: plazo para abrir el link (luego corre la ventana del invitado)."""
 
 
 class UrlSource(TypedDict):

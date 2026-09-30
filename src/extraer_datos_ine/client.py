@@ -10,13 +10,13 @@ import uuid
 from typing import Any, Callable, Optional
 
 from .errors import IneExtractorError
-from .types import ExtractResult, ImageSource
+from .types import CaptureLink, Delivery, ExtractResult, ImageSource
 
 DEFAULT_BASE_URL = "https://extraerdatosdeine.com/api/v1"
 DEFAULT_TIMEOUT = 60.0
 # Cloudflare, in front of the API, answers 403 to urllib's default
 # "Python-urllib/3.x" User-Agent, so every request names the SDK instead.
-USER_AGENT = "extraer-datos-ine-python/1.0.1"
+USER_AGENT = "extraer-datos-ine-python/1.1.0"
 
 # Firma de un "opener" inyectable (para tests): recibe un Request y un timeout
 # y devuelve un objeto con .status / .getcode() y .read(), o lanza HTTPError.
@@ -69,12 +69,18 @@ class IneExtractorClient:
         *,
         front_mime_type: str = "image/jpeg",
         back_mime_type: str = "image/jpeg",
+        destination_id: Optional[str] = None,
     ) -> ExtractResult:
         """Extrae los datos de una credencial INE/IFE.
 
         El método de envío se elige según el tipo de ``front``: ``bytes`` →
         multipart; ``str`` o ``{"base64": ...}`` → JSON base64; ``{"url": ...}``
         → JSON URL. ``front`` y ``back`` deben ser del mismo tipo.
+
+        Con ``destination_id`` (header ``X-Destination-Id``) los datos se
+        entregan además a uno de tus destinos antes de responder, y el
+        resultado viene en ``result.delivery``. Un destino inexistente o
+        pausado falla con ``DESTINATION_NOT_FOUND`` antes de gastar un token.
 
         Lanza :class:`IneExtractorError` ante saldo insuficiente, imagen
         ilegible, error de red, timeout, etc. Revisa ``error.code``.
@@ -89,27 +95,76 @@ class IneExtractorClient:
                 "INVALID_INPUT",
             )
 
+        headers = {"X-Destination-Id": destination_id} if destination_id else None
+
         if front_kind == "url":
             payload = {"image_front_url": _as_url(front)}
             if back is not None:
                 payload["image_back_url"] = _as_url(back)
-            body = self._request("POST", "/extract", json_body=payload)
+            body = self._request("POST", "/extract", json_body=payload, headers=headers)
         elif front_kind == "base64":
             payload = {"image_front": _as_base64(front)}
             if back is not None:
                 payload["image_back"] = _as_base64(back)
-            body = self._request("POST", "/extract", json_body=payload)
+            body = self._request("POST", "/extract", json_body=payload, headers=headers)
         else:
             files = {"image_front": ("image_front", bytes(front), front_mime_type)}  # type: ignore[arg-type]
             if back is not None:
                 files["image_back"] = ("image_back", bytes(back), back_mime_type)  # type: ignore[arg-type]
-            body = self._request("POST", "/extract", files=files)
+            body = self._request("POST", "/extract", files=files, headers=headers)
 
         return ExtractResult(
             extraction_id=body["extraction_id"],
             data=body["data"],
             tokens_remaining=body["tokens_remaining"],
             upload_method=body["upload_method"],
+            delivery=_parse_delivery(body.get("delivery")),
+        )
+
+    def create_capture_link(
+        self,
+        destination_id: str,
+        *,
+        document_type: str = "ine",
+        reference: Optional[str] = None,
+        require_back: bool = False,
+        requester_name: Optional[str] = None,
+        name: Optional[str] = None,
+    ) -> CaptureLink:
+        """Crea un link de captura (BETA) para que tu cliente fotografíe su
+        identificación desde su teléfono.
+
+        El link es de un solo uso: hay 15 minutos para abrirlo y 15 más desde
+        que se abre. Los datos llegan a tu destino ``destination_id``. Crear el
+        link no gasta tokens; la captura gasta uno y se reembolsa si la
+        extracción o la entrega fallan. Máximo 20 links vivos por cuenta.
+
+        ``document_type`` es ``"ine"`` o ``"passport"``; ``reference`` (máx. 80
+        caracteres) vuelve en el webhook; ``requester_name`` (máx. 60) es el
+        nombre que ve tu cliente.
+
+        ``url`` es una credencial y solo se devuelve aquí: no la guardes en logs.
+        """
+        if not destination_id:
+            raise IneExtractorError("Falta `destination_id`.", "INVALID_INPUT")
+        payload: dict = {"destinationId": destination_id, "documentType": document_type}
+        if reference is not None:
+            payload["reference"] = reference
+        if require_back:
+            payload["requireBack"] = True
+        if requester_name is not None:
+            payload["requesterName"] = requester_name
+        if name is not None:
+            payload["name"] = name
+        body = self._request("POST", "/capture-links", json_body=payload)
+        return CaptureLink(
+            id=body["id"],
+            url=body["url"],
+            reference=body.get("reference"),
+            document_type=body["documentType"],
+            require_back=bool(body.get("requireBack")),
+            ask_guest_persona=bool(body.get("askGuestPersona")),
+            expires_at=body["expiresAt"],
         )
 
     # -- internals ---------------------------------------------------------
@@ -121,9 +176,10 @@ class IneExtractorClient:
         *,
         json_body: Optional[dict] = None,
         files: Optional[dict] = None,
+        headers: Optional[dict] = None,
     ) -> Any:
         url = self.base_url + path
-        headers = {"X-API-Key": self.api_key, "User-Agent": USER_AGENT}
+        headers = {**(headers or {}), "X-API-Key": self.api_key, "User-Agent": USER_AGENT}
         data: Optional[bytes] = None
 
         if files is not None:
@@ -158,6 +214,18 @@ class IneExtractorClient:
         if status >= 400 or (isinstance(body, dict) and body.get("success") is False):
             raise IneExtractorError.from_response(status, body)
         return body
+
+
+def _parse_delivery(raw: Any) -> Optional[Delivery]:
+    if not isinstance(raw, dict):
+        return None
+    return Delivery(
+        destination_id=raw.get("destination_id", ""),
+        succeeded=bool(raw.get("succeeded")),
+        http_status=raw.get("http_status"),
+        latency_ms=raw.get("latency_ms"),
+        error_code=raw.get("error_code"),
+    )
 
 
 def _kind_of(src: ImageSource) -> str:

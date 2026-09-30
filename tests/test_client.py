@@ -143,6 +143,108 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "INVALID_INPUT")
         self.assertEqual(len(opener.calls), 0)
 
+    def test_sends_sdk_user_agent(self):
+        opener = ok_opener(200, {"success": True, "balance": 1})
+        IneExtractorClient("ine_test", opener=opener).get_balance()
+        self.assertEqual(opener.calls[0].headers["User-agent"], "extraer-datos-ine-python/1.1.0")
+
+    def test_extract_with_destination_sends_header_and_parses_delivery(self):
+        opener = ok_opener(
+            200,
+            {
+                "success": True,
+                "extraction_id": "ext_d",
+                "data": {},
+                "tokens_remaining": 3,
+                "upload_method": "base64",
+                "delivery": {
+                    "destination_id": "dst_1",
+                    "succeeded": False,
+                    "http_status": 500,
+                    "latency_ms": 120,
+                    "error_code": "HTTP_ERROR",
+                },
+            },
+        )
+        client = IneExtractorClient("ine_test", opener=opener)
+        result = client.extract(front="aGVsbG8=", destination_id="dst_1")
+        self.assertEqual(opener.calls[0].headers["X-destination-id"], "dst_1")
+        self.assertEqual(opener.calls[0].headers["X-api-key"], "ine_test")
+        self.assertIsNotNone(result.delivery)
+        self.assertEqual(result.delivery.destination_id, "dst_1")
+        self.assertFalse(result.delivery.succeeded)
+        self.assertEqual(result.delivery.http_status, 500)
+        self.assertEqual(result.delivery.latency_ms, 120)
+        self.assertEqual(result.delivery.error_code, "HTTP_ERROR")
+
+    def test_extract_without_destination_has_no_header_or_delivery(self):
+        opener = ok_opener(
+            200,
+            {"success": True, "extraction_id": "e", "data": {}, "tokens_remaining": 1, "upload_method": "multipart"},
+        )
+        result = IneExtractorClient("ine_test", opener=opener).extract(front=b"\x01")
+        self.assertNotIn("X-destination-id", opener.calls[0].headers)
+        self.assertIsNone(result.delivery)
+
+    def test_create_capture_link(self):
+        opener = ok_opener(
+            201,
+            {
+                "success": True,
+                "id": "cl_1",
+                "url": "https://extraerdatosdeine.com/c/tok",
+                "reference": "Hab 204",
+                "documentType": "passport",
+                "requireBack": False,
+                "askGuestPersona": False,
+                "expiresAt": "2026-09-30T12:15:00.000Z",
+            },
+        )
+        client = IneExtractorClient("ine_test", opener=opener)
+        link = client.create_capture_link(
+            "dst_1", document_type="passport", reference="Hab 204", requester_name="Hotel Sol"
+        )
+        req = opener.calls[0]
+        self.assertEqual(req.full_url, "https://extraerdatosdeine.com/api/v1/capture-links")
+        self.assertEqual(req.get_method(), "POST")
+        self.assertEqual(req.headers["Content-type"], "application/json")
+        self.assertEqual(req.headers["X-api-key"], "ine_test")
+        self.assertEqual(
+            json.loads(req.data),
+            {
+                "destinationId": "dst_1",
+                "documentType": "passport",
+                "reference": "Hab 204",
+                "requesterName": "Hotel Sol",
+            },
+        )
+        self.assertEqual(link.id, "cl_1")
+        self.assertEqual(link.url, "https://extraerdatosdeine.com/c/tok")
+        self.assertEqual(link.document_type, "passport")
+        self.assertEqual(link.expires_at, "2026-09-30T12:15:00.000Z")
+
+    def test_create_capture_link_defaults_and_require_back(self):
+        opener = ok_opener(
+            201,
+            {"success": True, "id": "cl", "url": "u", "reference": None, "documentType": "ine",
+             "requireBack": True, "askGuestPersona": False, "expiresAt": "x"},
+        )
+        link = IneExtractorClient("ine_test", opener=opener).create_capture_link("dst_1", require_back=True)
+        self.assertEqual(
+            json.loads(opener.calls[0].data),
+            {"destinationId": "dst_1", "documentType": "ine", "requireBack": True},
+        )
+        self.assertTrue(link.require_back)
+        self.assertIsNone(link.reference)
+
+    def test_create_capture_link_error(self):
+        opener = http_error_opener(
+            400, {"success": False, "error": "Demasiados links", "code": "TOO_MANY_LIVE_LINKS"}
+        )
+        with self.assertRaises(IneExtractorError) as ctx:
+            IneExtractorClient("ine_test", opener=opener).create_capture_link("dst_1")
+        self.assertEqual(ctx.exception.code, "TOO_MANY_LIVE_LINKS")
+
 
 if __name__ == "__main__":
     unittest.main()

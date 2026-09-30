@@ -16,9 +16,12 @@ class IneExtractorError(Exception):
     ``URL_INVALID``, ``URL_BLOCKED``, ``URL_TIMEOUT``,
     ``UNSUPPORTED_CONTENT_TYPE``, ``INSUFFICIENT_TOKENS``,
     ``LOW_IMAGE_QUALITY``, ``EXTRACTION_FAILED``, ``PROCESSING_ERROR``,
-    ``INTERNAL_ERROR``.
+    ``INTERNAL_ERROR``, ``DESTINATION_NOT_FOUND``, ``TOO_MANY_LIVE_LINKS``,
+    ``INVALID_DOCUMENT_TYPE``, ``INVALID_REFERENCE``, ``INVALID_NAME``,
+    ``INVALID_REQUESTER_NAME``, ``NOT_FOUND``.
 
-    Códigos propios del SDK: ``NETWORK_ERROR``, ``TIMEOUT``, ``INVALID_INPUT``.
+    Códigos propios del SDK: ``NETWORK_ERROR``, ``TIMEOUT``, ``INVALID_INPUT``,
+    ``INVALID_SIGNATURE``.
 
     https://extraerdatosdeine.com/docs
     """
